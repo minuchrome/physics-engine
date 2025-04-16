@@ -1,5 +1,6 @@
 import pygame
 import sys
+import random
 
 screen_w = 800
 screen_h = 600
@@ -10,13 +11,13 @@ clock = pygame.time.Clock()
 fps = 60
 dt = 1
 
-friction = 0.1
+friction = 0.05
 
 balls = []
 walls = []
 
 class Ball:
-    def __init__(self, x, y, r, m, elasticity=1, player=False):
+    def __init__(self, x, y, r, m, elasticity=1):
         balls.append(self)
         self.pos = pygame.Vector2(x, y)
         self.r = r
@@ -27,8 +28,8 @@ class Ball:
         self.elasticity = elasticity
         self.vel = pygame.Vector2(0, 0)
         self.acc = pygame.Vector2(0, 0)
-        self.accel = 4
-        self.player = player
+        self.accel = 1
+        self.player = False
     
     def draw(self, screen):
         pygame.draw.circle(screen, "#ff0000", (self.pos.x, self.pos.y), self.r)
@@ -56,10 +57,17 @@ class Wall:
         if dist.length() > 0:
             return dist.normalize()
 
-# Ball(200, 200, 100, 10)
-ball = Ball(100, 300, 40, 4, player=True)
+for i in range(4):
+    Ball(random.randint(100, screen_w-100), random.randint(100, screen_h-100), random.randint(30, 100), random.randint(5, 15), random.randint(1, 10)/10)
 
-wall = Wall(300, 100, 500, 500)
+balls[0].player = True
+
+Wall(300, 100, 400, 300)
+
+Wall(0, 0, screen_w, 0)
+Wall(0, 0, 0, screen_h)
+Wall(screen_w, 0, screen_w, screen_h)
+Wall(0, screen_h, screen_w, screen_h)
 
 def bb_col(b1, b2):
     dist = pygame.Vector2(b1.pos-b2.pos)
@@ -114,6 +122,15 @@ def bw_pen(b1, w1):
     if pen_vec.length() > 0:
         b1.pos += pen_vec.normalize()*(b1.r-pen_vec.length())
 
+def bw_res(b1, w1):
+    pen_vec = b1.pos-bw_closest(b1, w1)
+    if pen_vec.length() > 0:
+        normal = pen_vec.normalize()
+        sep_vel = b1.vel.dot(normal)
+        new_sep_vel = -sep_vel*b1.elasticity
+        sep_vel_diff = sep_vel-new_sep_vel
+        b1.vel += normal*(-sep_vel_diff)
+
 def key_control(dt, ball):
     keys = pygame.key.get_pressed()
     right, left, up, down = keys[pygame.K_RIGHT], keys[pygame.K_LEFT], keys[pygame.K_UP], keys[pygame.K_DOWN]
@@ -146,21 +163,20 @@ while True:
     for i, ball in enumerate(balls):
         if ball.player:
             key_control(dt, ball)
+        for wall in walls:
+            if bw_col(ball, wall):
+                bw_pen(ball, wall)
+                bw_res(ball, wall)
         for other in balls[i+1:]:
             if bb_col(ball, other):
                 bb_pen(ball, other)
                 bb_res(ball, other)
-        ball.update(dt)
         ball.draw(screen)
+        ball.update(dt)
 
     for wall in walls:
         wall.draw(screen)
 
-    draw_vec(ball.pos, bw_closest(ball, wall))
-    if bw_col(ball, wall):
-        # print(dt)
-        # https://youtu.be/hBWOxNLH4Dw?list=PLo6lBZn6hgca1T7cNZXpiq4q395ljbEI_&t=660
-        # 여기까지는 구현했는데 공이 벽에 끼는 문제 해결해야함
-        bw_pen(ball, wall)
+    # draw_vec(ball.pos, bw_closest(ball, wall))
 
     pygame.display.update()
