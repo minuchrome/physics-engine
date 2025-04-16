@@ -10,7 +10,7 @@ clock = pygame.time.Clock()
 fps = 60
 dt = 1
 
-friction = 0.2
+friction = 0.1
 
 balls = []
 walls = []
@@ -38,7 +38,7 @@ class Ball:
             self.acc = self.acc.normalize()*self.accel*dt
 
         self.vel += self.acc*dt
-        self.vel -= self.vel*friction*dt
+        self.vel *= (1-friction)*dt
 
         self.pos += self.vel*dt
 
@@ -51,41 +51,68 @@ class Wall:
     def draw(self, screen):
         pygame.draw.line(screen, "#000000", self.start, self.end, 4)
 
+    def unit(self):
+        dist = self.end-self.start
+        if dist.length() > 0:
+            return dist.normalize()
+
 # Ball(200, 200, 100, 10)
-Ball(100, 300, 40, 4, player=True)
+ball = Ball(100, 300, 40, 4, player=True)
 
-Wall(300, 100, 500, 500)
+wall = Wall(300, 100, 500, 500)
 
-def bb_col(a, b):
-    dist = pygame.Vector2(a.pos-b.pos)
-    if a.r+b.r >= dist.length():
+def bb_col(b1, b2):
+    dist = pygame.Vector2(b1.pos-b2.pos)
+    if b1.r+b2.r >= dist.length():
         return True
     return False
 
-def bb_pen(a, b):
-    dist = pygame.Vector2(a.pos-b.pos)
-    depth = a.r+b.r-dist.length()
+def bb_pen(b1, b2):
+    dist = pygame.Vector2(b1.pos-b2.pos)
+    depth = b1.r+b2.r-dist.length()
     res = pygame.Vector2(0, 0)
     if dist.length() > 0:
-        res = dist.normalize()*(depth/(a.inv_m+b.inv_m))
-    a.pos += res*a.inv_m
-    b.pos -= res*b.inv_m
+        res = dist.normalize()*(depth/(b1.inv_m+b2.inv_m))
+    b1.pos += res*b1.inv_m
+    b2.pos -= res*b2.inv_m
 
-def bb_res(a, b):
-    dist = pygame.Vector2(a.pos-b.pos)
+def bb_res(b1, b2):
+    dist = pygame.Vector2(b1.pos-b2.pos)
     normal = pygame.Vector2(0, 0)
     if dist.length() > 0:
         normal = dist.normalize()
-    rel_vel = a.vel-b.vel
+    rel_vel = b1.vel-b2.vel
     sep_vel = rel_vel.dot(normal)
-    new_sep_vel = -sep_vel*min(a.elasticity, b.elasticity)
+    new_sep_vel = -sep_vel*min(b1.elasticity, b2.elasticity)
     
     sep_vel_diff = new_sep_vel-sep_vel
-    impulse = sep_vel_diff/(a.inv_m+b.inv_m)
+    impulse = sep_vel_diff/(b1.inv_m+b2.inv_m)
     impulse_vec = normal*impulse
 
-    a.vel += impulse_vec*a.inv_m
-    b.vel -= impulse_vec*b.inv_m
+    b1.vel += impulse_vec*b1.inv_m
+    b2.vel -= impulse_vec*b2.inv_m
+
+def bw_closest(b1, w1):
+    ball_to_wall_start = w1.start-b1.pos
+    if w1.unit().dot(ball_to_wall_start) > 0:
+        return w1.start
+    wall_end_to_ball = b1.pos-w1.end
+    if w1.unit().dot(wall_end_to_ball) > 0:
+        return w1.end
+    
+    closest_dist = w1.unit().dot(ball_to_wall_start)
+    closest_vec = w1.unit()*closest_dist
+    return w1.start-closest_vec
+
+def bw_col(b1, w1):
+    if (bw_closest(b1, w1)-b1.pos).length() <= b1.r:
+        return True
+    return False
+
+def bw_pen(b1, w1):
+    pen_vec = b1.pos-bw_closest(b1, w1)
+    if pen_vec.length() > 0:
+        b1.pos += pen_vec.normalize()*(b1.r-pen_vec.length())
 
 def key_control(dt, ball):
     keys = pygame.key.get_pressed()
@@ -104,6 +131,9 @@ def key_control(dt, ball):
     if not up and not down:
         ball.acc.y = 0
 
+def draw_vec(pos, vec):
+    pygame.draw.line(screen, "#ff0000", pos, vec, 2)
+
 while True:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
@@ -111,7 +141,7 @@ while True:
             sys.exit()
     
     dt = clock.tick(fps)/1000*60
-    screen.fill("#ffffff")
+    screen.fill("#faf2cd")
 
     for i, ball in enumerate(balls):
         if ball.player:
@@ -125,5 +155,12 @@ while True:
 
     for wall in walls:
         wall.draw(screen)
+
+    draw_vec(ball.pos, bw_closest(ball, wall))
+    if bw_col(ball, wall):
+        # print(dt)
+        # https://youtu.be/hBWOxNLH4Dw?list=PLo6lBZn6hgca1T7cNZXpiq4q395ljbEI_&t=660
+        # 여기까지는 구현했는데 공이 벽에 끼는 문제 해결해야함
+        bw_pen(ball, wall)
 
     pygame.display.update()
